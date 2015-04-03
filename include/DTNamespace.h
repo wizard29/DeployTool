@@ -19,5 +19,13 @@
 #ifndef DTGLOBAL_H
 #define DTGLOBAL_H
 
+#include <qnamespace.h>
+
+namespace DT
+{
+    enum DataRole
+    {
+    };
+}//namespace DT
 #endif // DTGLOBAL_H
 
