@@ -307,7 +307,7 @@ QMap<QString, QString> DTOutputModel::GetRelocations(const QModelIndex& root) co
     if (rootId.isValid())
     {
         int count = rowCount(rootId);
-        for (int i = 0; i < count;)
+        for (int i = 0; i < count; ++i)
         {
             QModelIndex id = index(i, 0, rootId);
             bool relocate = GetAttribute(id, DT::RelocateAttribute, false)
