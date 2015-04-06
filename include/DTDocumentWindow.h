@@ -40,6 +40,7 @@ class DTDocumentWindow
 
         void OnOpen();
         void OnSave();
+        void OnSaveAs();
         void OnAddFolder();
         void OnAddFiles();
         void OnAddNewFolder();
@@ -51,10 +52,13 @@ class DTDocumentWindow
     private:
 
         QModelIndex GetCurrentIndex() const;
+        void Save(const QString& fileName);
 
     private:
 
         /// A pointer to the output view.
         QTreeView* m_pOutputView;
+        /// A project file name.
+        QString m_projectFile;
 };//class DTDocumentWindow
 #endif // DTDOCUMENTWINDOW_H

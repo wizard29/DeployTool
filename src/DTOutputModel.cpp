@@ -148,9 +148,7 @@ QModelIndex DTOutputModel::SetAttribute(const QModelIndex& root,
                                 setData(result, static_cast<int>(
                                             DT::OutputAttributeType),
                                         DT::ItemTypeRole);
-                                setData(result, static_cast<int>(
-                                            DT::PathAttribute),
-                                        DT::AttributeTypeRole);
+                                setData(result, type, DT::AttributeTypeRole);
                             }
                             QModelIndex id = index(result.row(), 1, root);
                             setData(id, value);
@@ -170,13 +168,11 @@ QModelIndex DTOutputModel::SetAttribute(const QModelIndex& root,
                             if (!result.isValid())
                             {
                                 result = GetNewItemIndex(root, rowCount(root));
-                                setData(result, tr("Path"));
+                                setData(result, tr("Relocate"));
                                 setData(result, static_cast<int>(
                                             DT::OutputAttributeType),
                                         DT::ItemTypeRole);
-                                setData(result, static_cast<int>(
-                                            DT::RelocateAttribute),
-                                        DT::AttributeTypeRole);
+                                setData(result, type, DT::AttributeTypeRole);
                             }
                             QModelIndex id = index(result.row(), 1, root);
                             setData(id, value);
@@ -196,13 +192,11 @@ QModelIndex DTOutputModel::SetAttribute(const QModelIndex& root,
                             if (!result.isValid())
                             {
                                 result = GetNewItemIndex(root, rowCount(root));
-                                setData(result, tr("Path"));
+                                setData(result, tr("Relocation path"));
                                 setData(result, static_cast<int>(
                                             DT::OutputAttributeType),
                                         DT::ItemTypeRole);
-                                setData(result, static_cast<int>(
-                                            DT::RelocatePathAttribute),
-                                        DT::AttributeTypeRole);
+                                setData(result, type, DT::AttributeTypeRole);
                             }
                             QModelIndex id = index(result.row(), 1, root);
                             setData(id, value);

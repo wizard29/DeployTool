@@ -80,7 +80,7 @@ DependencyResult ScanDependencies(const DependencyJob& job)
     QProcess process;
     QStringList args;
     args<<"-L";
-    args<<data.m_binary;
+    args<<job.m_binary;
     process.start("otool", args);
     if (process.waitForStarted())
     {
@@ -104,7 +104,7 @@ DependencyResult ScanDependencies(const DependencyJob& job)
             line.replace(QRegExp("[^A-Za-z0-9\\.\\*-+]$"), QString());
             if (!line.isEmpty())
             {
-                if (line != data.m_binary)
+                if (line != job.m_binary)
                 {
                     result.m_binaries.append(line);
                 }
@@ -131,8 +131,10 @@ DependencyResult ScanDependencies(const DependencyJob& job)
 DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     : QWidget(pParent, f)
     , m_pOutputView(nullptr)
+    , m_projectFile()
 {
     m_pOutputView = new QTreeView(this);
+    m_pOutputView->setAlternatingRowColors(true);
     m_pOutputView->setModel(new DTOutputModel(this));
     QMenuBar* pMenuBar = new QMenuBar(this);
     // form the "File" menu
@@ -219,24 +221,26 @@ void DTDocumentWindow::OnOpen()
  */
 void DTDocumentWindow::OnSave()
 {
+    if (m_projectFile.isEmpty())
+    {
+        OnSaveAs();
+    }
+    else
+    {
+        Save(m_projectFile);
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Save the project as.
+ */
+void DTDocumentWindow::OnSaveAs()
+{
     QString fileName = QFileDialog::getSaveFileName(this, tr("Save the project"),
                                                     QString(),
                                                     tr("Project files (*.deploy)"));
-    if (!fileName.isEmpty())
-    {
-        QFile file(fileName);
-        if (file.open(QFile::WriteOnly | QFile::Truncate))
-        {
-            DTOutputModel* pModel = qobject_cast<DTOutputModel*>(
-                        m_pOutputView->model());
-            Q_ASSERT(pModel);
-            if (!pModel->Serialize(&file))
-            {
-                qDebug()<<QString::fromLatin1("Save project error. file: \"%1\" line:%2")
-                          .arg(__FILE__).arg(__LINE__);
-            }
-        }
-    }
+    Save(fileName);
 }
 
 //------------------------------------------------------------------------------
@@ -322,17 +326,52 @@ void DTDocumentWindow::OnAddNewFolder()
  */
 void DTDocumentWindow::OnRefreshDependencies()
 {
-    QProgressDialog progress(this);
     QList<DependencyJob> jobs;
-    QFutureWatcher<DependencyResult> watcher;
-    connect(&watcher, SIGNAL(progressRangeChanged(int,int)),
-            &progress, SLOT(setRange(int,int)));
-    connect(&watcher, SIGNAL(progressValueChanged(int)),
-            &progress, SLOT(setValue(int)));
-    connect(&watcher, SIGNAL(resultReadyAt(int)),
-            this, SLOT(OnDependencyReady(int)));
-    watcher.setFuture(QtConcurrent::mapped(jobs, &ScanDependencies));
-    progress.exec();
+    // create job list
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    // go througth all binary items.
+    QList<QModelIndex> unprocessedNodes;
+    unprocessedNodes.push_back(QModelIndex());
+    while (!unprocessedNodes.isEmpty())
+    {
+        QModelIndex root = unprocessedNodes.front();
+        unprocessedNodes.pop_front();
+        int rows = pModel->rowCount(root);
+        for (int i = 0; i < rows; ++i)
+        {
+            QModelIndex id = pModel->index(i, 0, root);
+            int type = pModel->data(id, DT::ItemTypeRole).toInt();
+            if (type == static_cast<int>(DT::OutputBinaryType))
+            {
+                QString fileName = pModel->GetAttribute(id, DT::PathAttribute).toString();
+                if (!fileName.isEmpty())
+                {
+                    DependencyJob job;
+                    job.m_position = id;
+                    job.m_binary = fileName;
+                    jobs.append(job);
+                }
+            }
+            else if (type == static_cast<int>(DT::OutputFolderType))
+            {
+                unprocessedNodes.append(id);
+            }
+        }
+    }
+    if (jobs.size())
+    {
+        QProgressDialog progress(this);
+        QFutureWatcher<DependencyResult> watcher;
+        connect(&watcher, SIGNAL(progressRangeChanged(int,int)),
+                &progress, SLOT(setRange(int,int)));
+        connect(&watcher, SIGNAL(progressValueChanged(int)),
+                &progress, SLOT(setValue(int)));
+        connect(&watcher, SIGNAL(resultReadyAt(int)),
+                this, SLOT(OnDependencyReady(int)));
+        watcher.setFuture(QtConcurrent::mapped(jobs, &ScanDependencies));
+        progress.exec();
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -411,5 +450,33 @@ QModelIndex DTDocumentWindow::GetCurrentIndex() const
         return ids[0];
     }
     return QModelIndex();
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Saves project into a file.
+ * @param fileName - the file name.
+ */
+void DTDocumentWindow::Save(const QString& fileName)
+{
+    if (!fileName.isEmpty())
+    {
+        QFile file(fileName);
+        if (file.open(QFile::WriteOnly | QFile::Truncate))
+        {
+            DTOutputModel* pModel = qobject_cast<DTOutputModel*>(
+                        m_pOutputView->model());
+            Q_ASSERT(pModel);
+            if (!pModel->Serialize(&file))
+            {
+                qDebug()<<QString::fromLatin1("Save project error. file: \"%1\" line:%2")
+                          .arg(__FILE__).arg(__LINE__);
+            }
+            else
+            {
+                m_projectFile = fileName;
+            }
+        }
+    }
 }
 //------------------------------------------------------------------------------
