@@ -24,6 +24,7 @@
 #include <qinputdialog.h>
 #include <qfiledialog.h>
 #include <qgridlayout.h>
+#include<qmessagebox.h>
 #include <qtreeview.h>
 #include <qmenubar.h>
 #include <functional>
@@ -65,6 +66,48 @@ struct DependencyResult
         /// A binary file path list.
         QStringList m_binaries;
 };//struct DependencyResult
+
+//------------------------------------------------------------------------------
+/**
+ * @struct DependencyJob
+ * @ingroup DeployTool
+ * @brief The DeployJob struct contains data for copy job execution.
+ */
+//------------------------------------------------------------------------------
+struct CopyJob
+{
+    public:
+
+        /// A binary position in the model.
+        QModelIndex m_position;
+        /// A binary source path.
+        QString m_source;
+        /// A binary destination path.
+        QString m_destination;
+        /// The relocation map.
+        QMap<QString, QString> m_relocationMap;
+};//struct CopyJob
+
+//------------------------------------------------------------------------------
+/**
+ * @struct CopyResult
+ * @ingroup DeployTool
+ * @brief The CopyResult struct contains data of copy job execution.
+ */
+//------------------------------------------------------------------------------
+struct CopyResult
+{
+    public:
+
+        /// A binary position in the model.
+        QModelIndex m_position;
+        /// A binary source path.
+        QString m_source;
+        /// A binary destination path.
+        QString m_destination;
+        /// The error code.
+        int m_errors;
+};//struct CopyResult
 
 //------------------------------------------------------------------------------
 /**
@@ -112,6 +155,97 @@ DependencyResult ScanDependencies(const DependencyJob& job)
         }
     }
 #endif
+    return result;
+}
+
+//------------------------------------------------------------------------------
+inline void RelocateDependency(const QString& oldSource,
+                               const QString& relocation,
+                               const QString& destination)
+{
+#ifdef Q_OS_MAC
+    QString oldPath = oldSource;
+    QFileInfo fi(oldPath);
+    QString newPath = fi.fileName();
+    fi.setFile(destination);
+    QString destinatioName = fi.fileName();
+    fi.setFile(oldPath);
+    QString oldPathName = fi.fileName();
+    QProcess process;
+    QStringList args;
+    if (oldPathName == destinatioName)
+    {
+        args<<"-id";
+        if (!relocation.isEmpty())
+        {
+            args<<(relocation + QString("/") + newPath);
+        }
+        else
+        {
+            args<<newPath;
+        }
+        args<<destination;
+    }
+    else
+    {
+        args<<"-change";
+        args<<oldPath;
+        if (!relocation.isEmpty())
+        {
+            args<<(relocation + QString("/") + newPath);
+        }
+        else
+        {
+            args<<newPath;
+        }
+        args<<destination;
+    }
+    process.start("install_name_tool", args);
+    if (process.waitForStarted())
+    {
+        QByteArray processData;
+        while (process.waitForReadyRead())
+        {
+            processData.append(process.readAll());
+        }
+    }
+    process.waitForFinished();
+#else
+    Q_UNUSED(oldSource);
+    Q_UNUSED(relocation);
+    Q_UNUSED(destination);
+#endif
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Copies a file and relocates if it needs.
+ * @param job - a job data.
+ */
+CopyResult CopyFile(const CopyJob& job)
+{
+    CopyResult result;
+    result.m_position = job.m_position;
+    result.m_source = job.m_source;
+    result.m_destination = job.m_destination;
+    result.m_errors = 0;
+    if (!QFile::copy(job.m_source, job.m_destination))
+    {
+        result.m_errors = 1;
+    }
+    else
+    {
+        // relocate
+        if (job.m_relocationMap.size() != 0)
+        {
+            QMap<QString, QString>::ConstIterator pos = job.m_relocationMap.begin();
+            QMap<QString, QString>::ConstIterator end = job.m_relocationMap.end();
+            for (; pos != end; ++pos)
+            {
+                RelocateDependency(pos.key(), pos.value(), job.m_destination);
+            }
+        }
+    }
     return result;
 }
 
@@ -210,6 +344,10 @@ void DTDocumentWindow::OnOpen()
             {
                 qDebug()<<QString::fromLatin1("Load project error. file: \"%1\" line:%2")
                           .arg(__FILE__).arg(__LINE__);
+            }
+            else
+            {
+                m_projectFile = fileName;
             }
         }
     }
@@ -362,6 +500,8 @@ void DTDocumentWindow::OnRefreshDependencies()
     if (jobs.size())
     {
         QProgressDialog progress(this);
+        progress.setWindowTitle(tr("Dependency discovering"));
+        progress.setCancelButton(nullptr);
         QFutureWatcher<DependencyResult> watcher;
         connect(&watcher, SIGNAL(progressRangeChanged(int,int)),
                 &progress, SLOT(setRange(int,int)));
@@ -380,6 +520,37 @@ void DTDocumentWindow::OnRefreshDependencies()
  */
 void DTDocumentWindow::OnDeploy()
 {
+    QString rootPath = QFileDialog::getExistingDirectory(this,
+                                                         tr("Select an output folder"));
+    if (!rootPath.isEmpty())
+    {
+        // cleanup folder.
+        if (!CleanFolder(rootPath))
+        {
+            if (QMessageBox::warning(this, tr("Warning"),
+                                     tr("Clean destination folder error."),
+                                     QMessageBox::Abort, QMessageBox::Ignore) !=
+                QMessageBox::Ignore)
+            {
+                return;
+            }
+        }
+        // build folder structure.
+        if (!BuildFolderStructure(rootPath))
+        {
+            QMessageBox::critical(this, tr("Error"),
+                                  tr("Build an output folder structure failed."),
+                                  QMessageBox::Close);
+            return;
+        }
+        // copy files and relocate data for binaries.
+        if (!CopyOutputData(rootPath))
+        {
+            QMessageBox::critical(this, tr("Error"),
+                                  tr("Copy files error."), QMessageBox::Close);
+        }
+        m_copyErrors.clear();
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -438,6 +609,25 @@ void DTDocumentWindow::OnDependencyReady(int index)
 
 //------------------------------------------------------------------------------
 /**
+ * @brief Calls when copy job ready.
+ * @param index - a result index.
+ */
+void DTDocumentWindow::OnCopyReady(int index)
+{
+    QFutureWatcherBase* pWatcherBase = qobject_cast<QFutureWatcherBase*>(sender());
+    Q_ASSERT(pWatcherBase);
+    QFutureWatcher<CopyResult>* pWatcher = static_cast<QFutureWatcher<CopyResult>*>(
+                pWatcherBase);
+    Q_ASSERT(pWatcher);
+    CopyResult result = pWatcher->resultAt(index);
+    if (result.m_errors != 0)
+    {
+        m_copyErrors.append(result.m_source);
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
  * @brief Returns a selected index.
  */
 QModelIndex DTDocumentWindow::GetCurrentIndex() const
@@ -478,5 +668,140 @@ void DTDocumentWindow::Save(const QString& fileName)
             }
         }
     }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Builds an output folder structure.
+ * @param rootPath - the output folder.
+ * @return True if the operation completes successfully.
+ */
+bool DTDocumentWindow::BuildFolderStructure(const QString& rootPath)
+{
+    QDir dir(rootPath);
+    if (!dir.exists())
+    {
+        if (!dir.mkpath("."))
+        {
+            qDebug()<<QString::fromLatin1("Make path error line:%1").arg(__LINE__);
+            return false;
+        }
+    }
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    // go througth all path items.
+    QList<QModelIndex> unprocessedNodes;
+    QList<QString> paths;
+    unprocessedNodes.push_back(QModelIndex());
+    paths.append(rootPath);
+    while (!unprocessedNodes.isEmpty())
+    {
+        QModelIndex root = unprocessedNodes.front();
+        unprocessedNodes.pop_front();
+        QString path = paths.front();
+        paths.pop_front();
+        int rows = pModel->rowCount(root);
+        for (int i = 0; i < rows; ++i)
+        {
+            QModelIndex id = pModel->index(i, 0, root);
+            int type = pModel->data(id, DT::ItemTypeRole).toInt();
+            if (type == static_cast<int>(DT::OutputFolderType))
+            {
+                unprocessedNodes.append(id);
+                QString name = pModel->data(id).toString();
+                paths.append(path + QString::fromLatin1("/") + name);
+                QDir dir(path);
+                if (!dir.exists(name))
+                {
+                    if (!dir.mkpath(name))
+                    {
+                        qDebug()<<QString::fromLatin1("Make path error line:%1").arg(__LINE__);
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Copies and relocates an output data.
+ * @param rootPath - deploy root path.
+ * @return True if the operation completes successfully.
+ */
+bool DTDocumentWindow::CopyOutputData(const QString& rootPath)
+{
+    m_copyErrors.clear();
+    QList<CopyJob> jobs;
+    // create job list
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    // go througth all binary items.
+    QList<QModelIndex> unprocessedNodes;
+    QList<QString> paths;
+    unprocessedNodes.push_back(QModelIndex());
+    paths.append(rootPath);
+    while (!unprocessedNodes.isEmpty())
+    {
+        QModelIndex root = unprocessedNodes.front();
+        unprocessedNodes.pop_front();
+        QString path = paths.front();
+        paths.pop_front();
+        int rows = pModel->rowCount(root);
+        for (int i = 0; i < rows; ++i)
+        {
+            QModelIndex id = pModel->index(i, 0, root);
+            int type = pModel->data(id, DT::ItemTypeRole).toInt();
+            if (type == static_cast<int>(DT::OutputBinaryType))
+            {
+                QString fileName = pModel->GetAttribute(id, DT::PathAttribute).toString();
+                QString name = pModel->data(id).toString();
+                if (!fileName.isEmpty() && !name.isEmpty())
+                {
+                    CopyJob job;
+                    job.m_position = id;
+                    job.m_source = fileName;
+                    job.m_destination = path + QString::fromLatin1("/") + name;
+                    job.m_relocationMap = pModel->GetRelocations(id);
+                    jobs.append(job);
+                }
+            }
+            else if (type == static_cast<int>(DT::OutputFolderType))
+            {
+                unprocessedNodes.append(id);
+                QString name = pModel->data(id).toString();
+                paths.append(path + QString::fromLatin1("/") + name);
+            }
+        }
+    }
+    if (jobs.size())
+    {
+        QProgressDialog progress(this);
+        progress.setWindowTitle(tr("Copy binaries"));
+        progress.setCancelButton(nullptr);
+        QFutureWatcher<CopyResult> watcher;
+        connect(&watcher, SIGNAL(progressRangeChanged(int,int)),
+                &progress, SLOT(setRange(int,int)));
+        connect(&watcher, SIGNAL(progressValueChanged(int)),
+                &progress, SLOT(setValue(int)));
+        connect(&watcher, SIGNAL(resultReadyAt(int)),
+                this, SLOT(OnCopyReady(int)));
+        watcher.setFuture(QtConcurrent::mapped(jobs, &CopyFile));
+        progress.exec();
+    }
+    return m_copyErrors.size() == 0;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Removes all contents from the path.
+ * @param path - the source path.
+ */
+bool DTDocumentWindow::CleanFolder(const QString& path)
+{
+    QDir dir(path);
+    return dir.removeRecursively();
 }
 //------------------------------------------------------------------------------

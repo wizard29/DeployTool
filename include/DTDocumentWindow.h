@@ -48,17 +48,23 @@ class DTDocumentWindow
         void OnDeploy();
         void OnDeleteRow();
         void OnDependencyReady(int);
+        void OnCopyReady(int);
 
     private:
 
         QModelIndex GetCurrentIndex() const;
         void Save(const QString& fileName);
+        bool BuildFolderStructure(const QString& rootPath);
+        bool CopyOutputData(const QString& rootPath);
+        static bool CleanFolder(const QString& path);
 
     private:
 
         /// A pointer to the output view.
         QTreeView* m_pOutputView;
-        /// A project file name.
+        /// The project file name.
         QString m_projectFile;
+        /// The copy error list.
+        QStringList m_copyErrors;
 };//class DTDocumentWindow
 #endif // DTDOCUMENTWINDOW_H
