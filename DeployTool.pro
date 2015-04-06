@@ -7,10 +7,17 @@ QT += widgets concurrent xml
 
 ################################################################################
 HEADERS += \
-    include/DTNamespace.h
+    include/DTNamespace.h \
+    include/DTOutputModel.h \
+    include/DTDocumentWindow.h
 
 ################################################################################
 SOURCES += \
-    src/main.cpp
+    src/main.cpp \
+    src/DTOutputModel.cpp \
+    src/DTDocumentWindow.cpp
+
+################################################################################
+FORMS += \
 
 ################################################################################

@@ -25,6 +25,25 @@ namespace DT
 {
     enum DataRole
     {
+        ItemTypeRole = Qt::UserRole,
+        AttributeTypeRole
+    };// enum DataRole
+
+    enum OutputItemType
+    {
+        OutputFolderType = 0,
+        OutputBinaryType,
+        OutputOtherFileType,
+        OutputAttributeType,
+        OutputDependencyType,
+        OutputDependencyFolderType
+    };//enum OutputItemType
+
+    enum AttributeType
+    {
+        PathAttribute = 0,
+        RelocateAttribute,
+        RelocatePathAttribute
     };
 }//namespace DT
 #endif // DTGLOBAL_H
