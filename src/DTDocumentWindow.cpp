@@ -269,9 +269,7 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     , m_pOutputView(nullptr)
     , m_projectFile()
     , m_pDependencies(nullptr)
-{
-    m_pDependencies = new DTDependencyManager(this, Qt::Window);
-    m_pDependencies->setVisible(false);
+{    
     m_pOutputView = new QTreeView(this);
     m_pOutputView->setAlternatingRowColors(true);
     m_pOutputView->setModel(new DTOutputModel(this));
@@ -331,6 +329,13 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     pLayout->addWidget(pMenuBar);
     pLayout->addWidget(m_pOutputView, 1, 0);
     pLayout->setMargin(0);
+    // setup dependency manager
+    m_pDependencies = new DTDependencyManager(this, Qt::Window);
+    m_pDependencies->setVisible(false);
+    connect(m_pDependencies, SIGNAL(ApplyForAll(QModelIndex)),
+            this, SLOT(OnApplyForAllDependencies(QModelIndex)));
+    connect(m_pDependencies, SIGNAL(Copy(QModelIndex)),
+            this, SLOT(OnCopyDependency(QModelIndex)));
 }
 
 //------------------------------------------------------------------------------
@@ -660,6 +665,96 @@ void DTDocumentWindow::OnRefreshDependencies()
                 this, SLOT(OnDependencyReady(int)));
         watcher.setFuture(QtConcurrent::mapped(jobs, &ScanDependencies));
         progress.exec();
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Applies dependency settings for all matches in the project.
+ * @param depId - the dependency index.
+ */
+void DTDocumentWindow::OnApplyForAllDependencies(const QModelIndex& depId)
+{
+    QString name = m_pDependencies->GetName(depId);
+    QString path = m_pDependencies->GetPath(depId);
+    QString relocationPath = m_pDependencies->GetRelocation(depId);
+    bool relocate = m_pDependencies->GetIsRelocate(depId);
+    // update output model.
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    // go througth all binary items.
+    QList<QModelIndex> unprocessedNodes;
+    unprocessedNodes.push_back(QModelIndex());
+    while (!unprocessedNodes.isEmpty())
+    {
+        QModelIndex root = unprocessedNodes.front();
+        unprocessedNodes.pop_front();
+        int rows = pModel->rowCount(root);
+        for (int i = 0; i < rows; ++i)
+        {
+            QModelIndex id = pModel->index(i, 0, root);
+            int type = pModel->data(id, DT::ItemTypeRole).toInt();
+            switch (static_cast<DT::OutputItemType>(type))
+            {
+                case DT::OutputAttributeType:
+                case DT::OutputOtherFileType:
+                    break;
+                case DT::OutputFolderType:
+                case DT::OutputBinaryType:
+                case DT::OutputDependencyFolderType:
+                    unprocessedNodes.append(id);
+                    break;
+                case DT::OutputDependencyType:
+                    if (pModel->GetAttribute(id, DT::PathAttribute).toString() ==
+                        path)
+                    {
+                        pModel->SetAttribute(id, DT::RelocateAttribute, relocate);
+                        pModel->SetAttribute(id, DT::RelocatePathAttribute,
+                                             relocationPath);
+                        pModel->setData(id, name);
+                    }
+                    break;
+            }
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Copy dependency to the project.
+ * @param depId - the dependency index.
+ */
+void DTDocumentWindow::OnCopyDependency(const QModelIndex& depId)
+{
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    QModelIndex id = GetCurrentIndex();
+    if (id.isValid())
+    {
+        if (pModel->data(id, DT::ItemTypeRole).toInt() !=
+            static_cast<int>(DT::OutputFolderType))
+        {
+            QMessageBox::warning(this, tr("Copy dependency"),
+                                 tr("Folder selection required to complete the operation."),
+                                 QMessageBox::Close);
+            return;
+        }
+    }
+    QString path = m_pDependencies->GetPath(depId);
+    if (!path.isEmpty())
+    {
+        if (!QFile::exists(path))
+        {
+            int btn = QMessageBox::warning(
+                        this, tr("Copy dependency"),
+                        tr("Dependency file \"%1\" does not exist.\nDo you want to proceed?")
+                        .arg(path), QMessageBox::Yes, QMessageBox::No);
+            if (btn != static_cast<int>(QMessageBox::Yes))
+            {
+                return;
+            }
+        }
+        pModel->AddFile(id, path);
     }
 }
 

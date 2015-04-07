@@ -63,6 +63,7 @@ QModelIndex DTDependencyModel::AddDependency(const QString& name,
         setData(id, DT::OutputDependencyType, DT::ItemTypeRole);
         SetAttribute(id, DT::PathAttribute, path);
         SetAttribute(id, DT::RelocatePathAttribute, QString());
+        SetAttribute(id, DT::RelocateAttribute, false);
         m_filter.insert(path);
         return id;
     }
@@ -92,16 +93,6 @@ void DTDependencyModel::CleanupDependencies(const QSet<QString>& deps)
             ++i;
         }
     }
-}
-
-//------------------------------------------------------------------------------
-/**
- * @brief Returns a relocation string.
- * @param index - an index.
- */
-QString DTDependencyModel::GetRelocation(const QModelIndex& index) const
-{
-    return GetAttribute(index, DT::RelocatePathAttribute).toString();
 }
 
 //------------------------------------------------------------------------------
@@ -179,6 +170,31 @@ QModelIndex DTDependencyModel::SetAttribute(const QModelIndex& root,
                 }
                 break;
             case DT::RelocateAttribute:
+                switch (static_cast<DT::OutputItemType>(itemType))
+                {
+                    case DT::OutputDependencyType:
+                        if (value.type() == QVariant::Bool)
+                        {
+                            result = GetIndex(root, type);
+                            if (!result.isValid())
+                            {
+                                result = GetNewItemIndex(root, rowCount(root));
+                                setData(result, tr("Relocate"));
+                                setData(result, static_cast<int>(
+                                            DT::OutputAttributeType),
+                                        DT::ItemTypeRole);
+                                setData(result, type, DT::AttributeTypeRole);
+                                setData(result, QPixmap(QString::fromLatin1(":/images/attribute.png"))
+                                        .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                        Qt::DecorationRole);
+                            }
+                            QModelIndex id = index(result.row(), 1, root);
+                            setData(id, value);
+                        }
+                        break;
+                    default:
+                        break;
+                }
                 break;
             case DT::RelocatePathAttribute:
                 switch (static_cast<DT::OutputItemType>(itemType))

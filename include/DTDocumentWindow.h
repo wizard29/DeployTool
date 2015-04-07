@@ -51,6 +51,8 @@ class DTDocumentWindow
         void OnOpenDependencies();
         void OnSaveDependencies();
         void OnRefreshDependencies();
+        void OnApplyForAllDependencies(const QModelIndex&);
+        void OnCopyDependency(const QModelIndex&);
 
     private:
 

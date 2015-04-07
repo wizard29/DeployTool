@@ -24,6 +24,7 @@
 
 
 class QTreeView;
+class QMenu;
 
 
 class DTDependencyManager
@@ -37,22 +38,37 @@ class DTDependencyManager
 
         void AddDependency(const QString& name, const QString& filePath);
         void Cleanup(const QSet<QString>& deps);
+        QString GetRelocation(const QModelIndex&) const;
+        QString GetPath(const QModelIndex&) const;
+        QString GetName(const QModelIndex&) const;
+        bool GetIsRelocate(const QModelIndex&) const;
         bool Serialize(QIODevice* pOutput);
         bool Restore(QIODevice* pInput);
+        QModelIndex GetSelectedItem() const;
 
     signals:
 
         void Visible(bool);
+        void ApplyForAll(const QModelIndex& id);
+        void Copy(const QModelIndex& id);
 
     protected:
 
         void showEvent(QShowEvent*);
         void hideEvent(QHideEvent*);
 
+    private slots:
+
+        void OnApplyForAll();
+        void OnCopy();
+        void OnMenuRequest(const QPoint& pos);
+
     private:
 
         /// A pointer to the view.
         QTreeView* m_pDependencyView;
+        /// A pointer to the context menu.
+        QMenu* m_pContextMenu;
 };//class DTDependencyManager
 #endif // DTDEPENDENCYMANAGER_H
 

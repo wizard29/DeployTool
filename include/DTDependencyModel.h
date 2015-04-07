@@ -36,7 +36,6 @@ class DTDependencyModel
 
         QModelIndex AddDependency(const QString& name, const QString& path);
         void CleanupDependencies(const QSet<QString>& deps);
-        QString GetRelocation(const QModelIndex& index) const;
         QModelIndex GetIndex(const QModelIndex& index, DT::AttributeType type) const;
         QModelIndex SetAttribute(const QModelIndex& index, DT::AttributeType type,
                                  const QVariant& value);
