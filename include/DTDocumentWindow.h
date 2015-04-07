@@ -50,6 +50,7 @@ class DTDocumentWindow
         void OnCopyReady(int);
         void OnOpenDependencies();
         void OnSaveDependencies();
+        void OnSaveAsDependencies();
         void OnRefreshDependencies();
         void OnApplyForAllDependencies(const QModelIndex&);
         void OnCopyDependency(const QModelIndex&);
@@ -58,6 +59,7 @@ class DTDocumentWindow
 
         QModelIndex GetCurrentIndex() const;
         void Save(const QString& fileName);
+        void SaveDependencies(const QString& fileName);
         bool BuildFolderStructure(const QString& rootPath);
         bool CopyOutputData(const QString& rootPath);
         static bool CleanFolder(const QString& path);
@@ -72,5 +74,7 @@ class DTDocumentWindow
         QStringList m_copyErrors;
         /// A pointer to the dependency manager.
         DTDependencyManager* m_pDependencies;
+        /// The dependency file name.
+        QString m_dependencyFile;
 };//class DTDocumentWindow
 #endif // DTDOCUMENTWINDOW_H

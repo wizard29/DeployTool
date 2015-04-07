@@ -17,6 +17,9 @@
 
 //------------------------------------------------------------------------------
 #include "DTDependencyModel.h"
+#include <qtextstream.h>
+#include <qdebug.h>
+#include <qdom.h>
 
 
 //------------------------------------------------------------------------------
@@ -255,8 +258,78 @@ QVariant DTDependencyModel::GetAttribute(const QModelIndex& root,
  * @param pOutput - a pointer to an output.
  * @return True if the operation completes successfully.
  */
-bool DTDependencyModel::Serialize(QIODevice* /*pOutput*/)
+bool DTDependencyModel::Serialize(QIODevice* pOutput)
 {
+    if (pOutput)
+    {
+        QDomDocument xmlDocument(QString::fromLatin1("DependencyProject"));
+        QModelIndex root;
+        QDomElement xmlRoot = xmlDocument.createElement(QString::fromLatin1("root"));
+        xmlDocument.appendChild(xmlRoot);
+        QList<QModelIndex> unprocessedNodes;
+        QList<QDomElement> unprocessedElements;
+        unprocessedNodes.push_back(root);
+        unprocessedElements.push_back(xmlRoot);
+        while (!unprocessedNodes.isEmpty())
+        {
+            root = unprocessedNodes.front();
+            xmlRoot = unprocessedElements.front();
+            unprocessedNodes.pop_front();
+            unprocessedElements.pop_front();
+            int rows = rowCount(root);
+            for (int i = 0; i < rows; ++i)
+            {
+                QModelIndex id = index(i, 0, root);
+                int type = data(id, DT::ItemTypeRole).toInt();
+                QString name = data(id).toString();
+                QDomElement child = xmlDocument.createElement(QString::fromLatin1("item"));
+                child.setAttribute(QString::fromLatin1("name"), name);
+                child.setAttribute(QString::fromLatin1("type"), type);
+                switch (static_cast<DT::OutputItemType>(type))
+                {
+                    case DT::OutputFolderType:
+                        break;
+                    case DT::OutputBinaryType:
+                        break;
+                    case DT::OutputOtherFileType:
+                        break;
+                    case DT::OutputAttributeType:
+                    {
+                        QModelIndex attrId = index(i, 1, root);
+                        int attrType = data(id, DT::AttributeTypeRole).toInt();
+                        child.setAttribute(QString::fromLatin1("attrType"),
+                                           attrType);
+                        switch (static_cast<DT::AttributeType>(attrType))
+                        {
+                            case DT::PathAttribute:
+                                child.setAttribute(QString::fromLatin1("value"),
+                                                   data(attrId).toString());
+                                break;
+                            case DT::RelocateAttribute:
+                                child.setAttribute(QString::fromLatin1("value"),
+                                                   data(attrId).toInt());
+                                break;
+                            case DT::RelocatePathAttribute:
+                                child.setAttribute(QString::fromLatin1("value"),
+                                                   data(attrId).toString());
+                                break;
+                        }
+                    }
+                        break;
+                    case DT::OutputDependencyType:
+                        break;
+                    case DT::OutputDependencyFolderType:
+                        break;
+                }
+                unprocessedElements.append(child);
+                unprocessedNodes.append(id);
+                xmlRoot.appendChild(child);
+            }
+        }
+        QTextStream stream(pOutput);
+        xmlDocument.save(stream, 4, QDomNode::EncodingFromTextStream);
+        return true;
+    }
     return false;
 }
 
@@ -266,8 +339,105 @@ bool DTDependencyModel::Serialize(QIODevice* /*pOutput*/)
  * @param pInput - a pointer to the input.
  * @return True if the operation completes successfully.
  */
-bool DTDependencyModel::Restore(QIODevice* /*pInput*/)
+bool DTDependencyModel::Restore(QIODevice* pInput)
 {
+    if (pInput)
+    {
+        QDomDocument xmlDocument(QString::fromLatin1("DependencyProject"));
+        QTextStream stream(pInput);
+        QString msg;
+        int line = -1;
+        int column = -1;
+        if (xmlDocument.setContent(stream.readAll(), &msg, &line, &column))
+        {
+            // remove all rows
+            removeRows(0, rowCount());
+            // make new content
+            QDomElement xmlRoot = xmlDocument.documentElement();
+            QModelIndex root;
+            QList<QModelIndex> unprocessedNodes;
+            QList<QDomElement> unprocessedElements;
+            unprocessedElements.push_back(xmlRoot);
+            unprocessedNodes.push_back(root);
+            while (!unprocessedElements.isEmpty())
+            {
+                xmlRoot = unprocessedElements.front();
+                root = unprocessedNodes.front();
+                unprocessedElements.pop_front();
+                unprocessedNodes.pop_front();
+                QDomElement child = xmlRoot.firstChildElement();
+                while (!child.isNull())
+                {
+                    int type = child.attribute(QString::fromLatin1("type"))
+                            .toInt();
+                    QString name = child.attribute(QString::fromLatin1("name"));
+                    QModelIndex id = GetNewItemIndex(root, rowCount(root));
+                    setData(id, name);
+                    setData(id, type, DT::ItemTypeRole);
+                    switch (static_cast<DT::OutputItemType>(type))
+                    {
+                        case DT::OutputFolderType:
+                            setData(id, QPixmap(QString::fromLatin1(":/images/folder.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
+                            break;
+                        case DT::OutputBinaryType:
+                            setData(id, QPixmap(QString::fromLatin1(":/images/binaryfile.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
+                            break;
+                        case DT::OutputOtherFileType:
+                            break;
+                        case DT::OutputAttributeType:
+                        {
+                            QModelIndex attrId = index(id.row(), 1, root);
+                            int attrType = child.attribute(
+                                        QString::fromLatin1("attrType"))
+                                    .toInt();
+                            setData(id, attrType, DT::AttributeTypeRole);
+                            setData(id, QPixmap(QString::fromLatin1(":/images/attribute.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
+                            switch (static_cast<DT::AttributeType>(attrType))
+                            {
+                                case DT::PathAttribute:
+                                    setData(attrId, child.attribute(
+                                                QString::fromLatin1("value")));
+                                    break;
+                                case DT::RelocateAttribute:
+                                    setData(attrId, static_cast<bool>(
+                                                child.attribute(
+                                                    QString::fromLatin1("value"))
+                                                .toInt()));
+                                    break;
+                                case DT::RelocatePathAttribute:
+                                    setData(attrId, child.attribute(
+                                                QString::fromLatin1("value")));
+                                    break;
+                            }
+                        }
+                            break;
+                        case DT::OutputDependencyType:
+                            break;
+                        case DT::OutputDependencyFolderType:
+                            setData(id, QPixmap(QString::fromLatin1(":/images/dependencyfolder.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
+                            break;
+                    }
+                    unprocessedElements.append(child);
+                    unprocessedNodes.push_back(id);
+                    child = child.nextSiblingElement();
+                }
+            }
+            return true;
+        }
+        else
+        {
+            qDebug()<<QString::fromLatin1("Read project error: \"%1\"(line: %2, column: %3)")
+                      .arg(msg).arg(line).arg(column);
+        }
+    }
     return false;
 }
 

@@ -58,6 +58,7 @@ DTDependencyManager::DTDependencyManager(QWidget* pParent, Qt::WindowFlags f)
     connect(m_pDependencyView, SIGNAL(customContextMenuRequested(QPoint)),
             this, SLOT(OnMenuRequest(QPoint)));
     m_pDependencyView->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_pDependencyView->setSortingEnabled(true);
 }
 
 //------------------------------------------------------------------------------

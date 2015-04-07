@@ -269,6 +269,7 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     , m_pOutputView(nullptr)
     , m_projectFile()
     , m_pDependencies(nullptr)
+    , m_dependencyFile()
 {    
     m_pOutputView = new QTreeView(this);
     m_pOutputView->setAlternatingRowColors(true);
@@ -375,6 +376,7 @@ void DTDocumentWindow::OnOpen()
             }
         }
     }
+    OnOpenDependencies();
 }
 
 //------------------------------------------------------------------------------
@@ -391,6 +393,7 @@ void DTDocumentWindow::OnSave()
     {
         Save(m_projectFile);
     }
+    OnSaveDependencies();
 }
 
 //------------------------------------------------------------------------------
@@ -403,6 +406,7 @@ void DTDocumentWindow::OnSaveAs()
                                                     QString(),
                                                     tr("Project files (*.deploy)"));
     Save(fileName);
+    OnSaveAsDependencies();
 }
 
 //------------------------------------------------------------------------------
@@ -602,14 +606,53 @@ void DTDocumentWindow::OnCopyReady(int index)
  */
 void DTDocumentWindow::OnOpenDependencies()
 {
+    QString fileName = QFileDialog::getOpenFileName(this, tr("Open dependencies"),
+                                                    QString(),
+                                                    tr("Dependency files (*.dep)"));
+    if (!fileName.isEmpty())
+    {
+        QFile file(fileName);
+        if (file.open(QFile::ReadOnly))
+        {
+            if (!m_pDependencies->Restore(&file))
+            {
+                qDebug()<<QString::fromLatin1("Load dependency error. file: \"%1\" line:%2")
+                          .arg(__FILE__).arg(__LINE__);
+            }
+            else
+            {
+                m_dependencyFile = fileName;
+            }
+        }
+    }
 }
 
 //------------------------------------------------------------------------------
 /**
- * @brief Saves dependencies to a file.
+ * @brief Saves dependencies.
  */
 void DTDocumentWindow::OnSaveDependencies()
 {
+    if (m_dependencyFile.isEmpty())
+    {
+        OnSaveAsDependencies();
+    }
+    else
+    {
+        SaveDependencies(m_projectFile);
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Saves dependencies as.
+ */
+void DTDocumentWindow::OnSaveAsDependencies()
+{
+    QString fileName = QFileDialog::getSaveFileName(this, tr("Save the dependencies"),
+                                                    QString(),
+                                                    tr("Dependency files (*.dep)"));
+    SaveDependencies(fileName);
 }
 
 //------------------------------------------------------------------------------
@@ -797,6 +840,31 @@ void DTDocumentWindow::Save(const QString& fileName)
             else
             {
                 m_projectFile = fileName;
+            }
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Saves dependencies into a file.
+ * @param fileName - the file name.
+ */
+void DTDocumentWindow::SaveDependencies(const QString& fileName)
+{
+    if (!fileName.isEmpty())
+    {
+        QFile file(fileName);
+        if (file.open(QFile::WriteOnly | QFile::Truncate))
+        {
+            if (!m_pDependencies->Serialize(&file))
+            {
+                qDebug()<<QString::fromLatin1("Save dependenies error. file: \"%1\" line:%2")
+                          .arg(__FILE__).arg(__LINE__);
+            }
+            else
+            {
+                m_dependencyFile = fileName;
             }
         }
     }

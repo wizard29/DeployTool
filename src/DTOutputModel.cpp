@@ -431,7 +431,6 @@ bool DTOutputModel::Serialize(QIODevice* pOutput)
                                 child.setAttribute(QString::fromLatin1("value"),
                                                    data(attrId).toString());
                                 break;
-
                         }
                     }
                         break;
