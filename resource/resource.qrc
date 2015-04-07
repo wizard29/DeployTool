@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/attribute.png</file>
+        <file>images/binaryfile.png</file>
+        <file>images/dependencyfolder.png</file>
+        <file>images/file.png</file>
+        <file>images/folder.png</file>
+    </qresource>
+</RCC>

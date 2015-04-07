@@ -69,6 +69,9 @@ QModelIndex DTOutputModel::AddFolder(const QModelIndex& root,
     QModelIndex id = GetNewItemIndex(root, rowCount(root));
     setData(id, name);
     setData(id, static_cast<int>(DT::OutputFolderType), DT::ItemTypeRole);
+    setData(id, QPixmap(QString::fromLatin1(":/images/folder.png"))
+            .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+            Qt::DecorationRole);
     return id;
 }
 
@@ -102,10 +105,16 @@ QModelIndex DTOutputModel::AddFile(const QModelIndex& root,
     if (fi.isExecutable() || fi.suffix() == suffix)
     {
         setData(id, static_cast<int>(DT::OutputBinaryType), DT::ItemTypeRole);
+        setData(id, QPixmap(QString::fromLatin1(":/images/binaryfile.png"))
+                .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                Qt::DecorationRole);
     }
     else
     {
         setData(id, static_cast<int>(DT::OutputOtherFileType), DT::ItemTypeRole);
+        setData(id, QPixmap(QString::fromLatin1(":/images/file.png"))
+                .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                Qt::DecorationRole);
     }
     if (!SetAttribute(id, DT::PathAttribute, filePath).isValid())
     {
@@ -149,6 +158,9 @@ QModelIndex DTOutputModel::SetAttribute(const QModelIndex& root,
                                             DT::OutputAttributeType),
                                         DT::ItemTypeRole);
                                 setData(result, type, DT::AttributeTypeRole);
+                                setData(result, QPixmap(QString::fromLatin1(":/images/attribute.png"))
+                                        .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                        Qt::DecorationRole);
                             }
                             QModelIndex id = index(result.row(), 1, root);
                             setData(id, value);
@@ -173,6 +185,9 @@ QModelIndex DTOutputModel::SetAttribute(const QModelIndex& root,
                                             DT::OutputAttributeType),
                                         DT::ItemTypeRole);
                                 setData(result, type, DT::AttributeTypeRole);
+                                setData(result, QPixmap(QString::fromLatin1(":/images/attribute.png"))
+                                        .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                        Qt::DecorationRole);
                             }
                             QModelIndex id = index(result.row(), 1, root);
                             setData(id, value);
@@ -197,6 +212,9 @@ QModelIndex DTOutputModel::SetAttribute(const QModelIndex& root,
                                             DT::OutputAttributeType),
                                         DT::ItemTypeRole);
                                 setData(result, type, DT::AttributeTypeRole);
+                                setData(result, QPixmap(QString::fromLatin1(":/images/attribute.png"))
+                                        .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                        Qt::DecorationRole);
                             }
                             QModelIndex id = index(result.row(), 1, root);
                             setData(id, value);
@@ -254,7 +272,7 @@ QModelIndex DTOutputModel::AddDependency(const QModelIndex& root,
             id = GetNewItemIndex(rootId, rowCount(rootId));
             Q_ASSERT(id.isValid());
             setData(id, static_cast<int>(DT::OutputDependencyType),
-                    DT::ItemTypeRole);
+                    DT::ItemTypeRole);            
             SetAttribute(id, DT::PathAttribute, path);
             SetAttribute(id, DT::RelocateAttribute, false);
             SetAttribute(id, DT::RelocatePathAttribute, QString());
@@ -478,8 +496,14 @@ bool DTOutputModel::Restore(QIODevice* pInput)
                     switch (static_cast<DT::OutputItemType>(type))
                     {
                         case DT::OutputFolderType:
+                            setData(id, QPixmap(QString::fromLatin1(":/images/folder.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
                             break;
                         case DT::OutputBinaryType:
+                            setData(id, QPixmap(QString::fromLatin1(":/images/binaryfile.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
                             break;
                         case DT::OutputOtherFileType:
                             break;
@@ -490,6 +514,9 @@ bool DTOutputModel::Restore(QIODevice* pInput)
                                         QString::fromLatin1("attrType"))
                                     .toInt();
                             setData(id, attrType, DT::AttributeTypeRole);
+                            setData(id, QPixmap(QString::fromLatin1(":/images/attribute.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
                             switch (static_cast<DT::AttributeType>(attrType))
                             {
                                 case DT::PathAttribute:
@@ -512,6 +539,9 @@ bool DTOutputModel::Restore(QIODevice* pInput)
                         case DT::OutputDependencyType:
                             break;
                         case DT::OutputDependencyFolderType:
+                            setData(id, QPixmap(QString::fromLatin1(":/images/dependencyfolder.png"))
+                                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                                    Qt::DecorationRole);
                             break;
                     }
                     unprocessedElements.append(child);
@@ -578,6 +608,9 @@ QModelIndex DTOutputModel::GetDependencyFolder(const QModelIndex& root)
             setData(id, tr("Dependencies"));
             setData(id, static_cast<int>(DT::OutputDependencyFolderType),
                     DT::ItemTypeRole);
+            setData(id, QPixmap(QString::fromLatin1(":/images/dependencyfolder.png"))
+                    .scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation),
+                    Qt::DecorationRole);
             return id;
         }
     }
