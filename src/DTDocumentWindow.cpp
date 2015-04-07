@@ -273,6 +273,13 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     m_pOutputView = new QTreeView(this);
     m_pOutputView->setAlternatingRowColors(true);
     m_pOutputView->setModel(new DTOutputModel(this));
+    // setup dependency manager
+    m_pDependencies = new DTDependencyManager(this, Qt::Window);
+    m_pDependencies->setVisible(false);
+    connect(m_pDependencies, SIGNAL(ApplyForAll(QModelIndex)),
+            this, SLOT(OnApplyForAllDependencies(QModelIndex)));
+    connect(m_pDependencies, SIGNAL(Copy(QModelIndex)),
+            this, SLOT(OnCopyDependency(QModelIndex)));
     QMenuBar* pMenuBar = new QMenuBar(this);
     // form the "File" menu
     QMenu* pMenu = pMenuBar->addMenu(tr("File"));
@@ -328,14 +335,7 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     QGridLayout* pLayout = new QGridLayout(this);
     pLayout->addWidget(pMenuBar);
     pLayout->addWidget(m_pOutputView, 1, 0);
-    pLayout->setMargin(0);
-    // setup dependency manager
-    m_pDependencies = new DTDependencyManager(this, Qt::Window);
-    m_pDependencies->setVisible(false);
-    connect(m_pDependencies, SIGNAL(ApplyForAll(QModelIndex)),
-            this, SLOT(OnApplyForAllDependencies(QModelIndex)));
-    connect(m_pDependencies, SIGNAL(Copy(QModelIndex)),
-            this, SLOT(OnCopyDependency(QModelIndex)));
+    pLayout->setMargin(0);    
 }
 
 //------------------------------------------------------------------------------
