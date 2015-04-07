@@ -17,6 +17,8 @@
 
 //------------------------------------------------------------------------------
 #include "DTDocumentWindow.h"
+#include <DTDependencyManager.h>
+#include <DTDependencyModel.h>
 #include <qtconcurrentmap.h>
 #include <qprogressdialog.h>
 #include <qfuturewatcher.h>
@@ -24,7 +26,7 @@
 #include <qinputdialog.h>
 #include <qfiledialog.h>
 #include <qgridlayout.h>
-#include<qmessagebox.h>
+#include <qmessagebox.h>
 #include <qtreeview.h>
 #include <qmenubar.h>
 #include <functional>
@@ -266,7 +268,10 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     : QWidget(pParent, f)
     , m_pOutputView(nullptr)
     , m_projectFile()
+    , m_pDependencies(nullptr)
 {
+    m_pDependencies = new DTDependencyManager(this, Qt::Window);
+    m_pDependencies->setVisible(false);
     m_pOutputView = new QTreeView(this);
     m_pOutputView->setAlternatingRowColors(true);
     m_pOutputView->setModel(new DTOutputModel(this));
@@ -294,13 +299,27 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     pAction->setShortcut(Qt::CTRL + Qt::Key_N);
     connect(pAction, SIGNAL(triggered()), this, SLOT(OnAddNewFolder()));
     pAction = pMenu->addSeparator();
-    pAction = pMenu->addAction(tr("Refresh dependencies"));
-    pAction->setShortcut(QKeySequence::Refresh);
-    connect(pAction, SIGNAL(triggered()), this, SLOT(OnRefreshDependencies()));
-    pAction = pMenu->addSeparator();
     pAction = pMenu->addAction(tr("Deploy"));
     pAction->setShortcut(Qt::CTRL + Qt::Key_D);
     connect(pAction, SIGNAL(triggered()), this, SLOT(OnDeploy()));
+    // form dependencies menu
+    pMenu = pMenuBar->addMenu(tr("Dependencies"));
+    pAction = pMenu->addAction(tr("Open"));
+    connect(pAction, SIGNAL(triggered()), this, SLOT(OnOpenDependencies()));
+    pAction = pMenu->addAction(tr("Save"));
+    connect(pAction, SIGNAL(triggered()), this, SLOT(OnSaveDependencies()));
+    pAction = pMenu->addSeparator();
+    pAction = pMenu->addAction(tr("Refresh"));
+    pAction->setShortcut(QKeySequence::Refresh);
+    connect(pAction, SIGNAL(triggered()), this, SLOT(OnRefreshDependencies()));
+    pAction = pMenu->addSeparator();
+    pAction = pMenu->addAction(tr("Manage"));
+    pAction->setCheckable(true);
+    pAction->setChecked(false);
+    connect(pAction, SIGNAL(toggled(bool)),
+            m_pDependencies, SLOT(setVisible(bool)));
+    connect(m_pDependencies, SIGNAL(Visible(bool)),
+            pAction, SLOT(setChecked(bool)));
     // form other actions
     pAction = new QAction(tr("Delete item"), m_pOutputView);
     m_pOutputView->addAction(pAction);
@@ -460,62 +479,6 @@ void DTDocumentWindow::OnAddNewFolder()
 
 //------------------------------------------------------------------------------
 /**
- * @brief Refreshes a dependencies.
- */
-void DTDocumentWindow::OnRefreshDependencies()
-{
-    QList<DependencyJob> jobs;
-    // create job list
-    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
-    Q_ASSERT(pModel);
-    // go througth all binary items.
-    QList<QModelIndex> unprocessedNodes;
-    unprocessedNodes.push_back(QModelIndex());
-    while (!unprocessedNodes.isEmpty())
-    {
-        QModelIndex root = unprocessedNodes.front();
-        unprocessedNodes.pop_front();
-        int rows = pModel->rowCount(root);
-        for (int i = 0; i < rows; ++i)
-        {
-            QModelIndex id = pModel->index(i, 0, root);
-            int type = pModel->data(id, DT::ItemTypeRole).toInt();
-            if (type == static_cast<int>(DT::OutputBinaryType))
-            {
-                QString fileName = pModel->GetAttribute(id, DT::PathAttribute).toString();
-                if (!fileName.isEmpty())
-                {
-                    DependencyJob job;
-                    job.m_position = id;
-                    job.m_binary = fileName;
-                    jobs.append(job);
-                }
-            }
-            else if (type == static_cast<int>(DT::OutputFolderType))
-            {
-                unprocessedNodes.append(id);
-            }
-        }
-    }
-    if (jobs.size())
-    {
-        QProgressDialog progress(this);
-        progress.setWindowTitle(tr("Dependency discovering"));
-        progress.setCancelButton(nullptr);
-        QFutureWatcher<DependencyResult> watcher;
-        connect(&watcher, SIGNAL(progressRangeChanged(int,int)),
-                &progress, SLOT(setRange(int,int)));
-        connect(&watcher, SIGNAL(progressValueChanged(int)),
-                &progress, SLOT(setValue(int)));
-        connect(&watcher, SIGNAL(resultReadyAt(int)),
-                this, SLOT(OnDependencyReady(int)));
-        watcher.setFuture(QtConcurrent::mapped(jobs, &ScanDependencies));
-        progress.exec();
-    }
-}
-
-//------------------------------------------------------------------------------
-/**
  * @brief Starts deploy the project.
  */
 void DTDocumentWindow::OnDeploy()
@@ -603,7 +566,9 @@ void DTDocumentWindow::OnDependencyReady(int index)
                   [&](const QString& fileName)
     {
         QFileInfo fi(fileName);
-        pModel->AddDependency(result.m_position, fi.fileName(), fileName);
+        QString name = fi.fileName();
+        pModel->AddDependency(result.m_position, name, fileName);
+        m_pDependencies->AddDependency(name, fileName);
     });
 }
 
@@ -623,6 +588,78 @@ void DTDocumentWindow::OnCopyReady(int index)
     if (result.m_errors != 0)
     {
         m_copyErrors.append(result.m_source);
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Loads dependencies from a file.
+ */
+void DTDocumentWindow::OnOpenDependencies()
+{
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Saves dependencies to a file.
+ */
+void DTDocumentWindow::OnSaveDependencies()
+{
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Refreshes a dependencies.
+ */
+void DTDocumentWindow::OnRefreshDependencies()
+{
+    QList<DependencyJob> jobs;
+    // create job list
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    // go througth all binary items.
+    QList<QModelIndex> unprocessedNodes;
+    unprocessedNodes.push_back(QModelIndex());
+    while (!unprocessedNodes.isEmpty())
+    {
+        QModelIndex root = unprocessedNodes.front();
+        unprocessedNodes.pop_front();
+        int rows = pModel->rowCount(root);
+        for (int i = 0; i < rows; ++i)
+        {
+            QModelIndex id = pModel->index(i, 0, root);
+            int type = pModel->data(id, DT::ItemTypeRole).toInt();
+            if (type == static_cast<int>(DT::OutputBinaryType))
+            {
+                QString fileName = pModel->GetAttribute(id, DT::PathAttribute).toString();
+                if (!fileName.isEmpty())
+                {
+                    DependencyJob job;
+                    job.m_position = id;
+                    job.m_binary = fileName;
+                    jobs.append(job);
+                }
+            }
+            else if (type == static_cast<int>(DT::OutputFolderType))
+            {
+                unprocessedNodes.append(id);
+            }
+        }
+    }
+    if (jobs.size())
+    {
+        QProgressDialog progress(this);
+        progress.setWindowTitle(tr("Dependency discovering"));
+        progress.setCancelButton(nullptr);
+        QFutureWatcher<DependencyResult> watcher;
+        connect(&watcher, SIGNAL(progressRangeChanged(int,int)),
+                &progress, SLOT(setRange(int,int)));
+        connect(&watcher, SIGNAL(progressValueChanged(int)),
+                &progress, SLOT(setValue(int)));
+        connect(&watcher, SIGNAL(resultReadyAt(int)),
+                this, SLOT(OnDependencyReady(int)));
+        watcher.setFuture(QtConcurrent::mapped(jobs, &ScanDependencies));
+        progress.exec();
     }
 }
 

@@ -343,7 +343,7 @@ QMap<QString, QString> DTOutputModel::GetRelocations(const QModelIndex& root) co
 //------------------------------------------------------------------------------
 /**
  * @brief Returns an attribute index.
- * @param root - the attribute root,
+ * @param root - the attribute root.
  * @param type - the attribute type.
  * @return Index of the attribute or invalid index.
  */

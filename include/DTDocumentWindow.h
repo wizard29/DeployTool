@@ -24,7 +24,7 @@
 
 
 class QTreeView;
-class QProgressBar;
+class DTDependencyManager;
 
 
 class DTDocumentWindow
@@ -44,11 +44,13 @@ class DTDocumentWindow
         void OnAddFolder();
         void OnAddFiles();
         void OnAddNewFolder();
-        void OnRefreshDependencies();
         void OnDeploy();
         void OnDeleteRow();
         void OnDependencyReady(int);
         void OnCopyReady(int);
+        void OnOpenDependencies();
+        void OnSaveDependencies();
+        void OnRefreshDependencies();
 
     private:
 
@@ -66,5 +68,7 @@ class DTDocumentWindow
         QString m_projectFile;
         /// The copy error list.
         QStringList m_copyErrors;
+        /// A pointer to the dependency manager.
+        DTDependencyManager* m_pDependencies;
 };//class DTDocumentWindow
 #endif // DTDOCUMENTWINDOW_H
