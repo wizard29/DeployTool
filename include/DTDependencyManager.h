@@ -62,6 +62,7 @@ class DTDependencyManager
         void OnApplyForAll();
         void OnCopy();
         void OnMenuRequest(const QPoint& pos);
+        void OnDelete();
 
     private:
 

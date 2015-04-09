@@ -59,6 +59,12 @@ DTDependencyManager::DTDependencyManager(QWidget* pParent, Qt::WindowFlags f)
             this, SLOT(OnMenuRequest(QPoint)));
     m_pDependencyView->setContextMenuPolicy(Qt::CustomContextMenu);
     m_pDependencyView->setSortingEnabled(true);
+    // create delete action
+    pAction = new QAction(this);
+    pAction->setShortcut(QKeySequence::Delete);
+    pAction->setShortcutContext(Qt::WindowShortcut);
+    m_pDependencyView->addAction(pAction);
+    connect(pAction, SIGNAL(triggered()), this, SLOT(OnDelete()));
 }
 
 //------------------------------------------------------------------------------
@@ -253,4 +259,25 @@ void DTDependencyManager::OnMenuRequest(const QPoint& pos)
         }
     }
 }
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Deletes a selected dependency or does nothing.
+ */
+void DTDependencyManager::OnDelete()
+{
+    QModelIndex id = GetSelectedItem();
+    if (id.isValid())
+    {
+        DTDependencyModel* pModel = qobject_cast<DTDependencyModel*>(
+                    m_pDependencyView->model());
+        Q_ASSERT(pModel);
+        int type = pModel->data(id, DT::ItemTypeRole).toInt();
+        if (type == static_cast<int>(DT::OutputDependencyType))
+        {
+            pModel->removeRow(id.row(), id.parent());
+        }
+    }
+}
+
 //------------------------------------------------------------------------------

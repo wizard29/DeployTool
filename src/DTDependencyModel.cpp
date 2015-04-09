@@ -352,6 +352,7 @@ bool DTDependencyModel::Restore(QIODevice* pInput)
         {
             // remove all rows
             removeRows(0, rowCount());
+            m_filter.clear();
             // make new content
             QDomElement xmlRoot = xmlDocument.documentElement();
             QModelIndex root;
@@ -401,8 +402,18 @@ bool DTDependencyModel::Restore(QIODevice* pInput)
                             switch (static_cast<DT::AttributeType>(attrType))
                             {
                                 case DT::PathAttribute:
-                                    setData(attrId, child.attribute(
-                                                QString::fromLatin1("value")));
+                                {
+                                    int rootType = data(root, DT::ItemTypeRole)
+                                            .toInt();
+                                    QString value = child.attribute(
+                                                QString::fromLatin1("value"));
+                                    if (rootType == static_cast<int>(
+                                                DT::OutputDependencyType))
+                                    {
+                                        m_filter.insert(value);
+                                    }
+                                    setData(attrId, value);
+                                }
                                     break;
                                 case DT::RelocateAttribute:
                                     setData(attrId, static_cast<bool>(

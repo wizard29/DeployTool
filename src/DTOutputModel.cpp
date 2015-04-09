@@ -102,7 +102,8 @@ QModelIndex DTOutputModel::AddFile(const QModelIndex& root,
 #ifdef Q_OS_MAC
     QString suffix = QString::fromLatin1("dylib");
 #endif
-    if (fi.isExecutable() || fi.suffix() == suffix)
+    if (fi.isExecutable() || fi.suffix() == suffix ||
+        fi.suffix().isEmpty())
     {
         setData(id, static_cast<int>(DT::OutputBinaryType), DT::ItemTypeRole);
         setData(id, QPixmap(QString::fromLatin1(":/images/binaryfile.png"))

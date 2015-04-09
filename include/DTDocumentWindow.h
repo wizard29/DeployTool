@@ -21,6 +21,7 @@
 
 
 #include <qwidget.h>
+#include <qmap.h>
 
 
 class QTreeView;
@@ -53,7 +54,8 @@ class DTDocumentWindow
         void OnSaveAsDependencies();
         void OnRefreshDependencies();
         void OnApplyForAllDependencies(const QModelIndex&);
-        void OnCopyDependency(const QModelIndex&);
+        void OnCopyDependency(const QModelIndex&);        
+        void OnCreateOSXBundleStructure();
 
     private:
 
@@ -62,6 +64,8 @@ class DTDocumentWindow
         void SaveDependencies(const QString& fileName);
         bool BuildFolderStructure(const QString& rootPath);
         bool CopyOutputData(const QString& rootPath);
+        void ReplaceToRelative(const QString& oldRoot, const QString& newRoot);
+        QString GetAbsoluteInputPath(const QString& relative) const;
         static bool CleanFolder(const QString& path);
 
     private:
@@ -72,6 +76,8 @@ class DTDocumentWindow
         QString m_projectFile;
         /// The copy error list.
         QStringList m_copyErrors;
+        /// The relocation error map.
+        QMap<QString, QStringList> m_relocationErrors;
         /// A pointer to the dependency manager.
         DTDependencyManager* m_pDependencies;
         /// The dependency file name.

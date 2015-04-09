@@ -107,6 +107,8 @@ struct CopyResult
         QString m_source;
         /// A binary destination path.
         QString m_destination;
+        /// The relocation error list.
+        QStringList m_relocationErrorPaths;
         /// The error code.
         int m_errors;
 };//struct CopyResult
@@ -146,6 +148,7 @@ DependencyResult ScanDependencies(const DependencyJob& job)
             line.replace(QRegExp("\\( *\\)$"), QString());
             line.replace(QRegExp(":"), QString());
             line.replace(QString::fromLatin1("\t"), QString());
+            line.replace(QString::fromLatin1("\n"), QString());
             line.replace(QRegExp("[^A-Za-z0-9\\.\\*-+]$"), QString());
             if (!line.isEmpty())
             {
@@ -161,6 +164,12 @@ DependencyResult ScanDependencies(const DependencyJob& job)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * @brief Relinks dependency of the destination file.
+ * @param oldSource - old dependency path.
+ * @param relocation - new dependency path.
+ * @param destination - the destination file name.
+ */
 inline void RelocateDependency(const QString& oldSource,
                                const QString& relocation,
                                const QString& destination)
@@ -246,6 +255,22 @@ CopyResult CopyFile(const CopyJob& job)
             {
                 RelocateDependency(pos.key(), pos.value(), job.m_destination);
             }
+            // check new dependencies
+            DependencyJob scanJob;
+            scanJob.m_binary = job.m_destination;
+            DependencyResult scanResult = ScanDependencies(scanJob);
+            std::for_each(scanResult.m_binaries.begin(),
+                          scanResult.m_binaries.end(),
+                          [&](const QString& path)
+            {
+                if (job.m_relocationMap.contains(path))
+                {
+                    if (job.m_relocationMap.value(path) != path)
+                    {
+                        result.m_relocationErrorPaths.append(path);
+                    }
+                }
+            });
         }
     }
     return result;
@@ -304,6 +329,10 @@ DTDocumentWindow::DTDocumentWindow(QWidget* pParent, Qt::WindowFlags f)
     pAction = pMenu->addAction(tr("Add new folder"));
     pAction->setShortcut(Qt::CTRL + Qt::Key_N);
     connect(pAction, SIGNAL(triggered()), this, SLOT(OnAddNewFolder()));
+    pAction = pMenu->addSeparator();
+    pAction = pMenu->addAction(tr("Create OSX bundle"));
+    connect(pAction, SIGNAL(triggered()),
+            this, SLOT(OnCreateOSXBundleStructure()));
     pAction = pMenu->addSeparator();
     pAction = pMenu->addAction(tr("Deploy"));
     pAction->setShortcut(Qt::CTRL + Qt::Key_D);
@@ -371,8 +400,8 @@ void DTDocumentWindow::OnOpen()
                           .arg(__FILE__).arg(__LINE__);
             }
             else
-            {
-                m_projectFile = fileName;
+            {                
+                m_projectFile = fileName;                
             }
         }
     }
@@ -439,16 +468,18 @@ void DTDocumentWindow::OnAddFiles()
     if (type == static_cast<int>(DT::OutputFolderType))
     {
         QStringList fileNames = QFileDialog::getOpenFileNames(this, tr("Select files"),
-                                                              QString(),
+                                                              QString::fromLatin1("/opt"),
                                                               tr("Files (*)"));
+        QFileInfo projectInfo(m_projectFile);
+        QDir dir(projectInfo.absolutePath());
         int count = fileNames.size();
         for (int i = 0; i < count; ++i)
         {
-            QString fileName = fileNames[i];
+            QString fileName = fileNames[i];            
             QFileInfo fi(fileName);
             if (!fileName.isEmpty() && fi.exists())
             {
-                pModel->AddFile(id, fileName);
+                pModel->AddFile(id, dir.relativeFilePath(fileName));
             }
         }
     }
@@ -492,6 +523,8 @@ void DTDocumentWindow::OnAddNewFolder()
  */
 void DTDocumentWindow::OnDeploy()
 {
+    m_relocationErrors.clear();
+    m_copyErrors.clear();
     QString rootPath = QFileDialog::getExistingDirectory(this,
                                                          tr("Select an output folder"));
     if (!rootPath.isEmpty())
@@ -521,7 +554,29 @@ void DTDocumentWindow::OnDeploy()
             QMessageBox::critical(this, tr("Error"),
                                   tr("Copy files error."), QMessageBox::Close);
         }
-        m_copyErrors.clear();
+        if (m_relocationErrors.size() != 0)
+        {
+            QString text;
+            QMap<QString, QStringList>::ConstIterator pos = m_relocationErrors.begin();
+            QMap<QString, QStringList>::ConstIterator end = m_relocationErrors.end();
+            for (; pos != end; ++pos)
+            {
+                QString files;
+                QTextStream stream(&files);
+                std::for_each((*pos).begin(), (*pos).end(),
+                              [&](const QString& path)
+                {
+                    stream<<path;
+                });
+                text.append(QString::fromLatin1("destination:\"%1\" files:%2\n")
+                            .arg(pos.key()).arg(files));
+            }
+            QMessageBox::information(this, tr("Relocation errors"),
+                                     tr("Errors:%1").arg(text),
+                                     QMessageBox::Close);
+            m_relocationErrors.clear();
+        }
+        m_copyErrors.clear();        
     }
 }
 
@@ -598,6 +653,10 @@ void DTDocumentWindow::OnCopyReady(int index)
     {
         m_copyErrors.append(result.m_source);
     }
+    if (result.m_relocationErrorPaths.size() != 0)
+    {
+        m_relocationErrors.insert(result.m_destination, result.m_relocationErrorPaths);
+    }
 }
 
 //------------------------------------------------------------------------------
@@ -639,7 +698,7 @@ void DTDocumentWindow::OnSaveDependencies()
     }
     else
     {
-        SaveDependencies(m_projectFile);
+        SaveDependencies(m_dependencyFile);
     }
 }
 
@@ -684,7 +743,7 @@ void DTDocumentWindow::OnRefreshDependencies()
                 {
                     DependencyJob job;
                     job.m_position = id;
-                    job.m_binary = fileName;
+                    job.m_binary = GetAbsoluteInputPath(fileName);
                     jobs.append(job);
                 }
             }
@@ -803,6 +862,33 @@ void DTDocumentWindow::OnCopyDependency(const QModelIndex& depId)
 
 //------------------------------------------------------------------------------
 /**
+ * @brief Creates folder structure for the OSX bundle.
+ */
+void DTDocumentWindow::OnCreateOSXBundleStructure()
+{
+    bool ok;
+    QString name = QInputDialog::getText(this, tr("Enter bundle name"),
+                                        tr("Name:"), QLineEdit::Normal,
+                                        tr("MyApp.app"), &ok);
+    if (ok)
+    {
+        DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+        Q_ASSERT(pModel);
+        // remove all rows.
+        pModel->removeRows(0, pModel->rowCount());
+        // create folder structure for bundle
+        QModelIndex root = pModel->AddFolder(QModelIndex(), name);
+        root = pModel->AddFolder(root, QString::fromLatin1("Contents"));
+        QModelIndex id = pModel->AddFolder(root, QString::fromLatin1("MacOS"));
+        id = pModel->AddFolder(root, QString::fromLatin1("Resources"));
+        id = pModel->AddFolder(root, QString::fromLatin1("Frameworks"));
+        id = pModel->AddFolder(root, QString::fromLatin1("PlugIns"));
+        id = pModel->AddFolder(root, QString::fromLatin1("SharedSupport"));
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
  * @brief Returns a selected index.
  */
 QModelIndex DTDocumentWindow::GetCurrentIndex() const
@@ -839,7 +925,14 @@ void DTDocumentWindow::Save(const QString& fileName)
             }
             else
             {
-                m_projectFile = fileName;
+                if (m_projectFile != fileName)
+                {
+                    QFileInfo projectInfo(m_projectFile);
+                    QFileInfo fileInfo(fileName);
+                    ReplaceToRelative(projectInfo.absolutePath(),
+                                      fileInfo.absolutePath());
+                    m_projectFile = fileName;
+                }
             }
         }
     }
@@ -938,7 +1031,7 @@ bool DTDocumentWindow::CopyOutputData(const QString& rootPath)
     // create job list
     DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
     Q_ASSERT(pModel);
-    // go througth all binary items.
+    // go througth all file items.
     QList<QModelIndex> unprocessedNodes;
     QList<QString> paths;
     unprocessedNodes.push_back(QModelIndex());
@@ -954,15 +1047,16 @@ bool DTDocumentWindow::CopyOutputData(const QString& rootPath)
         {
             QModelIndex id = pModel->index(i, 0, root);
             int type = pModel->data(id, DT::ItemTypeRole).toInt();
-            if (type == static_cast<int>(DT::OutputBinaryType))
+            if (type == static_cast<int>(DT::OutputBinaryType) ||
+                type == static_cast<int>(DT::OutputOtherFileType))
             {
                 QString fileName = pModel->GetAttribute(id, DT::PathAttribute).toString();
                 QString name = pModel->data(id).toString();
                 if (!fileName.isEmpty() && !name.isEmpty())
                 {
                     CopyJob job;
-                    job.m_position = id;
-                    job.m_source = fileName;
+                    job.m_position = id;                    
+                    job.m_source = GetAbsoluteInputPath(fileName);
                     job.m_destination = path + QString::fromLatin1("/") + name;
                     job.m_relocationMap = pModel->GetRelocations(id);
                     jobs.append(job);
@@ -992,6 +1086,59 @@ bool DTDocumentWindow::CopyOutputData(const QString& rootPath)
         progress.exec();
     }
     return m_copyErrors.size() == 0;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Replaces one relative path to another.
+ * @param oldRoot - current root for relative.
+ * @param newRoot - new root for relative.
+ */
+void DTDocumentWindow::ReplaceToRelative(const QString& oldRoot,
+                                         const QString& newRoot)
+{
+    QDir newDir(newRoot);
+    DTOutputModel* pModel = qobject_cast<DTOutputModel*>(m_pOutputView->model());
+    Q_ASSERT(pModel);
+    // go througth all file items.
+    QList<QModelIndex> unprocessedNodes;
+    unprocessedNodes.push_back(QModelIndex());
+    while (!unprocessedNodes.isEmpty())
+    {
+        QModelIndex root = unprocessedNodes.front();
+        unprocessedNodes.pop_front();
+        int rows = pModel->rowCount(root);
+        for (int i = 0; i < rows; ++i)
+        {
+            QModelIndex id = pModel->index(i, 0, root);
+            int type = pModel->data(id, DT::ItemTypeRole).toInt();
+            if (type == static_cast<int>(DT::OutputBinaryType) ||
+                type == static_cast<int>(DT::OutputOtherFileType))
+            {
+                QString fileName = pModel->GetAttribute(id, DT::PathAttribute).toString();
+                fileName = QDir::cleanPath(oldRoot + QString::fromLatin1("/") +
+                                           fileName);
+                fileName = newDir.relativeFilePath(fileName);
+                pModel->SetAttribute(id, DT::PathAttribute, fileName);
+            }
+            else if (type == static_cast<int>(DT::OutputFolderType))
+            {
+                unprocessedNodes.append(id);
+            }
+        }
+    }
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @brief Returns absolute path for an input relative path.
+ * @param relative - the relative path.
+ */
+QString DTDocumentWindow::GetAbsoluteInputPath(const QString& relative) const
+{
+    QFileInfo projectInfo(m_projectFile);
+    QString projectPath = projectInfo.absolutePath();
+    return QDir::cleanPath(projectPath + QString::fromLatin1("/") + relative);
 }
 
 //------------------------------------------------------------------------------
